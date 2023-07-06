@@ -1,8 +1,10 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import axios from 'axios'
+import phoneBookSerice from './services/Phonebook'
 
-const Names = ({ nameObject }) => {
+const Names = ({ nameObject, onCLickHandle}) => {
   return (
-    <li>{nameObject.name}: {nameObject.number}</li>
+    <li>{nameObject.name}: {nameObject.number} <button onClick={(e)=>onCLickHandle(nameObject, e)}>delete</button></li>
   )
 }
 
@@ -36,27 +38,51 @@ const PersonForm = ({addName, newName, handleNameChange, newNumber, handleNumber
   )
 }
 
-const Persons = ({personAfterFillter}) => {
+const Persons = ({personAfterFillter, deletePerson}) => {
   return (
     <ul>
         {
           personAfterFillter.map(person => 
-            <Names key ={person.name} nameObject={person}/>)
+            <Names key ={person.name} nameObject={person} onCLickHandle={deletePerson}/>)
         }
     </ul>
   )
 }
 
+const Notification = ({ message }) => {
+  if (message === null) {
+    return null
+  }
+
+  const notificationStyle = {
+    color: 'green',
+    fontStyle: 'italic',
+    fontSize: 48
+  }
+
+  return (
+    <div style={notificationStyle}>
+      {message}
+    </div>
+  )
+}
+
 const App = () => {
-  const [persons, setPersons] = useState([
-    { name: 'Arto Hellas', number: '040-123456'},
-    { name: 'Ada Lovelace', number: '39-44-5323523'},
-    { name: 'Dan Abramov', number: '12-43-234345'},
-    { name: 'Mary Poppendieck', number: '39-23-6423122'}
-  ]) 
+  const [persons, setPersons] = useState([]) 
   const [newName, setNewName] = useState('')
   const [newNumber, setNewNumber] = useState('')
   const [newFilter, setNewFilter] = useState('')
+  const [operateMessage, setOperateMessage] = useState('')
+
+  const hook = () => {
+    phoneBookSerice
+      .getAll()
+      .then(initialPersons => {
+        setPersons(initialPersons)
+      })
+  }
+
+  useEffect(hook, [])
 
   const addName = (event) => {
     event.preventDefault()
@@ -67,9 +93,41 @@ const App = () => {
 
     const find = persons.find(object => object.name === nameObject.name)
     if (find) {
-      alert(`${newName} is already added to phonebook`)
+      if (window.confirm(`${newName} is already added to phonebook, replace the old number with new one?`)) {
+        nameObject.id = find.id
+        console.log(nameObject)
+        phoneBookSerice
+          .update(find.id, nameObject)
+          .then(returnPerson => {
+            setPersons(persons.map(person => person.id !== find.id ? person : returnPerson))
+            setOperateMessage(`Modified ${returnPerson.name}`)
+            setTimeout(() => {
+              setOperateMessage('')
+            }, 5000)
+          })
+      }
     } else {
-      setPersons(persons.concat(nameObject))
+      phoneBookSerice
+        .create(nameObject)
+        .then(returnPerson => {
+          //setPersons(persons.concat(nameObject))
+          setPersons(persons.concat(returnPerson))
+          setOperateMessage(`Add ${returnPerson.name}`)
+          setTimeout(() => {
+            setOperateMessage('')
+          }, 5000)
+      })
+
+    }
+  }
+
+  const deletePerson = (nameObject, e) => {
+    if (window.confirm("Do you really want to delete " + nameObject.name + " ?")) {
+    axios
+      .delete(`http://localhost:3001/persons/${nameObject.id}`)
+      .then(response => {
+        setPersons(persons.filter(person => person.id !== nameObject.id))
+      })
     }
   }
 
@@ -92,12 +150,12 @@ const App = () => {
   return (
     <div>
       <h2>Phonebook</h2>
+      <Notification message={operateMessage}/>
       <Filter newFilter={newFilter} handleFilterChange={handleFilterChange}/>
-
       <h2>Add a new</h2>
       <PersonForm addName={addName} handleNameChange={handleNameChange} newNumber={newNumber} handleNumberChange={handleNumberChange}/>
       <h2>Numbers</h2>
-      <Persons personAfterFillter={personAfterFillter}/>
+      <Persons personAfterFillter={personAfterFillter} deletePerson={deletePerson}/>
     </div>
   )
 }
